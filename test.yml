@@ -1,0 +1,9 @@
+---
+- name: Quick test showing vault creds
+  hosts: vault
+  gather_facts: false
+  vars:
+  tasks:
+    - name: Just see if we connected successfully
+      debug:
+        msg: "Connected to vault host successfully"
