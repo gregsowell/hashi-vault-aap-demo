@@ -102,5 +102,4 @@
         credentials:
           - "{{ machine_credential_name }}"
           - "{{ custom_credential_name }}"
-        ask_inventory_on_launch: true
         state: present
