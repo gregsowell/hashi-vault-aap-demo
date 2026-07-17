@@ -109,7 +109,7 @@
         msg:
           - Vault
           - secrets engines, create secret, create secret
-          - ADD rhel_hosts, root_password ansible123!, secret_key UniqueSecret
+          - ADD rhel_hosts, root_password ansible123!, special_key UniqueSecret
           - "!! EDIT - policies, acl policies, aap-terraform-policy, add rhel-hosts**"
           - SHOW - access, authentication methods, approle
           - SHOW - policies, acl policies, aap-terraform-policy
