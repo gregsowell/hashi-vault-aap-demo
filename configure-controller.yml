@@ -14,7 +14,7 @@
     validate_certs: false
 
     organization_name: Default
-    machine_credential_name: rhel
+    machine_credential_name: rhel-machine-default
     custom_credential_type_name: special_key
     custom_credential_name: vault-special-key
     project_name: gregsowell
@@ -31,7 +31,7 @@
       validate_certs: "{{ validate_certs }}"
 
   tasks:
-    - name: Create machine credential named rhel
+    - name: Create machine credential
       ansible.controller.credential:
         name: "{{ machine_credential_name }}"
         organization: "{{ organization_name }}"
