@@ -7,3 +7,15 @@
     - name: Just see if we connected successfully
       debug:
         msg: "Connected to vault host successfully"
+    
+    - name: Quick ping via cli
+      shell: "ping {{ item }}"
+      loop:
+        - command
+        - vault
+        - vscode
+      register: ping_results
+
+    - name: Show ping results
+      debug:
+        var: ping_results
