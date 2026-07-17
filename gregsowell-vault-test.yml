@@ -7,6 +7,11 @@
   tasks:
     - name: Issue a command to show everything is working
       shell: hostname
+      register: hostname_output
+
+    - name: Display the hostname output
+      debug:
+        msg: "hostname is {{ hostname_output.stdout }}"
 
     - name: Display the vault special key
       debug:
