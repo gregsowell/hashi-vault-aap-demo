@@ -1,0 +1,281 @@
+---
+- name: Configure Vault KV, policy, and AppRole via CLI
+  hosts: vault
+  gather_facts: false
+
+  vars:
+    vault_addr: http://127.0.0.1:8200
+    vault_username: admin
+    vault_password: "{{ lookup('env', 'VAULT_ADMIN_PASSWORD') | default('ansible123!', true) }}"
+    kv_mount_path: secret
+    kv_version: "2"
+    aws_secret_path: aws_creds
+    aws_access_key: "{{ lookup('env', 'AWS_ACCESS_KEY_ID') | default('', true) }}"
+    aws_secret_key: "{{ lookup('env', 'AWS_SECRET_ACCESS_KEY') | default('', true) }}"
+    vault_policy_name: aap-terraform-policy
+    vault_policy_file: /tmp/aap-terraform-policy.hcl
+    vault_approle_path: approle
+    vault_approle_name: aapterraform
+    vault_approle_test_login: true
+    vault_policy_hcl: |
+      ### Read AWS credentials
+      path "secret/data/aws_creds" {
+        capabilities = ["read"]
+      }
+      ### Write SSH keys - TFE to write, and AAP to read SSH keys
+      path "secret/data/*/ssh-keys/*" {
+        capabilities = ["create", "read", "update", "delete"]
+      }
+      path "secret/data/rhel-server/ssh-keys/*" {
+        capabilities = ["create", "read", "update", "delete"]
+      }
+      # Allow creating child tokens
+      path "auth/token/create" {
+        capabilities = ["create", "update"]
+      }
+      path "auth/token/renew-self" {
+        capabilities = ["update"]
+      }
+      path "auth/token/lookup-self" {
+        capabilities = ["read"]
+      }
+      #
+      ### TFE and AAP can see, list, and read metadata
+      path "secret/metadata/*" {
+        capabilities = ["list", "read"]
+      }
+      # Allow TFE and AAP to write instance metadata
+      path "secret/data/*/metadata" {
+        capabilities = ["create", "read", "update", "delete"]
+      }
+
+  tasks:
+    - name: Require AWS credentials for Vault secret seed data
+      ansible.builtin.assert:
+        that:
+          - aws_access_key | length > 0
+          - aws_secret_key | length > 0
+        fail_msg: >-
+          Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in the environment,
+          or override aws_access_key and aws_secret_key as playbook variables.
+
+    - name: Log in to Vault with userpass
+      ansible.builtin.command:
+        argv:
+          - vault
+          - login
+          - -address={{ vault_addr }}
+          - -method=userpass
+          - username={{ vault_username }}
+          - password={{ vault_password }}
+          - -format=json
+      register: vault_login
+      changed_when: false
+      no_log: true
+
+    - name: Capture Vault token from login output
+      ansible.builtin.set_fact:
+        vault_token: "{{ (vault_login.stdout | from_json).auth.client_token }}"
+      no_log: true
+
+    - name: List enabled secret engines
+      ansible.builtin.command:
+        argv:
+          - vault
+          - secrets
+          - list
+          - -address={{ vault_addr }}
+          - -format=json
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      register: vault_secrets_list
+      changed_when: false
+      no_log: true
+
+    - name: Enable KV v2 secret engine
+      ansible.builtin.command:
+        argv:
+          - vault
+          - secrets
+          - enable
+          - -address={{ vault_addr }}
+          - -path={{ kv_mount_path }}
+          - -version={{ kv_version }}
+          - kv
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      when: (kv_mount_path ~ '/') not in (vault_secrets_list.stdout | from_json)
+
+    - name: Seed AWS credentials secret in KV engine
+      ansible.builtin.command:
+        argv:
+          - vault
+          - kv
+          - put
+          - -address={{ vault_addr }}
+          - {{ kv_mount_path }}/{{ aws_secret_path }}
+          - access_key={{ aws_access_key }}
+          - secret_key={{ aws_secret_key }}
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      no_log: true
+
+    - name: Read back AWS credentials secret
+      ansible.builtin.command:
+        argv:
+          - vault
+          - kv
+          - get
+          - -address={{ vault_addr }}
+          - -mount={{ kv_mount_path }}
+          - -format=json
+          - {{ aws_secret_path }}
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      register: aws_secret_readback
+      changed_when: false
+      no_log: true
+
+    - name: Verify secret contains expected keys
+      ansible.builtin.assert:
+        that:
+          - (aws_secret_readback.stdout | from_json).data.data.access_key == aws_access_key
+          - (aws_secret_readback.stdout | from_json).data.data.secret_key == aws_secret_key
+        fail_msg: Vault secret readback did not match the supplied AWS credentials.
+      no_log: true
+
+    - name: Stage Vault policy file
+      ansible.builtin.copy:
+        dest: "{{ vault_policy_file }}"
+        content: "{{ vault_policy_hcl }}"
+        mode: '0600'
+
+    - name: Write Vault policy
+      ansible.builtin.command:
+        argv:
+          - vault
+          - policy
+          - write
+          - -address={{ vault_addr }}
+          - {{ vault_policy_name }}
+          - {{ vault_policy_file }}
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+
+    - name: List enabled auth methods
+      ansible.builtin.command:
+        argv:
+          - vault
+          - auth
+          - list
+          - -address={{ vault_addr }}
+          - -format=json
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      register: vault_auth_list
+      changed_when: false
+      no_log: true
+
+    - name: Enable AppRole auth method
+      ansible.builtin.command:
+        argv:
+          - vault
+          - auth
+          - enable
+          - -address={{ vault_addr }}
+          - -path={{ vault_approle_path }}
+          - approle
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      when: (vault_approle_path ~ '/') not in (vault_auth_list.stdout | from_json)
+
+    - name: Create or update AppRole with policy
+      ansible.builtin.command:
+        argv:
+          - vault
+          - write
+          - -address={{ vault_addr }}
+          - auth/{{ vault_approle_path }}/role/{{ vault_approle_name }}
+          - token_policies={{ vault_policy_name }}
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+
+    - name: Read AppRole role ID
+      ansible.builtin.command:
+        argv:
+          - vault
+          - read
+          - -address={{ vault_addr }}
+          - -format=json
+          - auth/{{ vault_approle_path }}/role/{{ vault_approle_name }}/role-id
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      register: vault_role_id_read
+      changed_when: false
+      no_log: true
+
+    - name: Generate AppRole secret ID
+      ansible.builtin.command:
+        argv:
+          - vault
+          - write
+          - -address={{ vault_addr }}
+          - -f
+          - -format=json
+          - auth/{{ vault_approle_path }}/role/{{ vault_approle_name }}/secret-id
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        VAULT_TOKEN: "{{ vault_token }}"
+      register: vault_secret_id_write
+      no_log: true
+
+    - name: Capture AppRole identifiers
+      ansible.builtin.set_fact:
+        vault_role_id: "{{ (vault_role_id_read.stdout | from_json).data.role_id }}"
+        vault_secret_id: "{{ (vault_secret_id_write.stdout | from_json).data.secret_id }}"
+      no_log: true
+
+    - name: Test AppRole login
+      ansible.builtin.command:
+        argv:
+          - vault
+          - write
+          - -address={{ vault_addr }}
+          - -format=json
+          - auth/{{ vault_approle_path }}/login
+          - role_id={{ vault_role_id }}
+          - secret_id={{ vault_secret_id }}
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+      register: vault_approle_login
+      changed_when: false
+      when: vault_approle_test_login | bool
+      no_log: true
+
+    - name: Confirm AppRole login produced a client token
+      ansible.builtin.assert:
+        that:
+          - ((vault_approle_login.stdout | from_json).auth.client_token | default('')) | length > 0
+        fail_msg: AppRole login did not return a client token.
+      when: vault_approle_test_login | bool
+      no_log: true
+
+    - name: Show generated AppRole IDs for downstream configuration
+      ansible.builtin.debug:
+        msg:
+          role_id: "{{ vault_role_id }}"
+          secret_id: "{{ vault_secret_id }}"
+
+    - name: Remove staged Vault policy file
+      ansible.builtin.file:
+        path: "{{ vault_policy_file }}"
+        state: absent

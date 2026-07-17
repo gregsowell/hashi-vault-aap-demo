@@ -66,7 +66,7 @@
         organization: "{{ organization_name }}"
         credential_type: "{{ custom_credential_type_name }}"
         inputs:
-          special_key: test123
+          special_key: not set
         state: present
 
     - name: Create project and sync from public GitHub repo
@@ -103,3 +103,19 @@
           - "{{ machine_credential_name }}"
           - "{{ custom_credential_name }}"
         state: present
+
+    - name: Debug some additional information
+      debug:
+        msg:
+          - Vault
+          - !! EDIT - policies, acl policies, aap-terraform-policy, add rhel-hosts**
+          - secrets engines, create secret, create secret
+          - rhel_hosts, root_password ansible123!, secret_key UniqueSecret
+          - SHOW - access, authentication methods, approle
+          - SHOW - policies, acl policies, aap-terraform-policy
+          - AAP
+          - Fire job template - will fail
+          - SHOW credential vault
+          - EDIT credential rhel-machine-default - secret, rhel_hosts, root_password, approle
+          - EDIT credential vault-special-key - secret, rhel_hosts, secret_key, approle
+          - Fire job template again pass
