@@ -107,6 +107,7 @@
     - name: Debug some additional information
       debug:
         msg:
+          - Solve Next, then second page Solve !!
           - Vault
           - secrets engines, create secret, create secret
           - ADD rhel_hosts, root_password ansible123!, special_key UniqueSecret
