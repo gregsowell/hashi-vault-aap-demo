@@ -108,7 +108,7 @@
       debug:
         msg:
           - Vault
-          - !! EDIT - policies, acl policies, aap-terraform-policy, add rhel-hosts**
+          - "!! EDIT - policies, acl policies, aap-terraform-policy, add rhel-hosts**"
           - secrets engines, create secret, create secret
           - rhel_hosts, root_password ansible123!, secret_key UniqueSecret
           - SHOW - access, authentication methods, approle
