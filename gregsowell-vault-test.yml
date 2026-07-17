@@ -3,19 +3,11 @@
   hosts: vault
   gather_facts: false
   vars:
-  tasks:
-    - name: Just see if we connected successfully
-      debug:
-        msg: "Connected to vault host successfully"
     
-    - name: Quick ping via cli 5 times
-      shell: "ping -c 5 {{ item }}"
-      loop:
-        - control
-        - vault
-        - vscode
-      register: ping_results
+  tasks:
+    - name: Issue a command to show everything is working
+      shell: hostname
 
-    - name: Show ping results
+    - name: Display the vault special key
       debug:
-        var: ping_results
+        msg: "The vault special key is {{ special_key }}"
