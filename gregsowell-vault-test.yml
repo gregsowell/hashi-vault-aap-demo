@@ -10,4 +10,4 @@
 
     - name: Display the vault special key
       debug:
-        msg: "The vault special key is {{ special_key }}"
+        msg: "The vault special key is {{ special_key | default('not set', true) }}"
