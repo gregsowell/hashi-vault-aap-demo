@@ -11,7 +11,7 @@
     - name: Quick ping via cli 5 times
       shell: "ping -c 5 {{ item }}"
       loop:
-        - command
+        - control
         - vault
         - vscode
       register: ping_results
