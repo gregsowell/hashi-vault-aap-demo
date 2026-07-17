@@ -14,6 +14,8 @@
     validate_certs: false
 
     organization_name: Default
+    inventory_name: Demo Inventory
+    inventory_host_name: vault
     machine_credential_name: rhel-machine-default
     custom_credential_type_name: special_key
     custom_credential_name: vault-special-key
@@ -77,12 +79,26 @@
         wait: true
         state: present
 
+    - name: Create inventory
+      ansible.controller.inventory:
+        name: "{{ inventory_name }}"
+        organization: "{{ organization_name }}"
+        state: present
+
+    - name: Create inventory host named vault
+      ansible.controller.host:
+        name: "{{ inventory_host_name }}"
+        inventory: "{{ inventory_name }}"
+        state: present
+
+
     - name: Create job template using both credentials
       ansible.controller.job_template:
         name: "{{ job_template_name }}"
         organization: "{{ organization_name }}"
         project: "{{ project_name }}"
         playbook: "{{ job_template_playbook }}"
+        inventory: "{{ inventory_name }}"
         credentials:
           - "{{ machine_credential_name }}"
           - "{{ custom_credential_name }}"
